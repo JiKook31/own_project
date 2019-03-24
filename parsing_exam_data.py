@@ -10,36 +10,30 @@ def retrive_id_spec():
     """
     retrieves mapping specialization_id-specialization_name from
     'https://moeobrazovanie.ru/specialities_vuz/'
-    :return: nothing, id-name is stored in 'id_speciality.json', name-id in 'speciality_id.json'
+    :return: nothing, id-name is stored in 'id_speciality.json'
     """
-    spec_id_dict = {}
     id_spec_dict = {}
 
     specs_url = 'https://moeobrazovanie.ru/specialities_vuz/'
     r = requests.get(specs_url)
-    text = r.text
-    soup = BeautifulSoup(text, 'html.parser')
+    soup = BeautifulSoup(r.text, 'html.parser')
     # going through all specializations from the webpage
     for spec in soup.find_all("a"):
         if spec.get('class') == ['spec_articles_list_spec_link']:
             link = spec.get('href').split('/')[-1]
             new_url = specs_url + link
             r = requests.get(new_url)
-            text = r.text
-            soup_new = BeautifulSoup(text, 'html.parser')
+            soup_new = BeautifulSoup(r.text, 'html.parser')
             name = soup_new.find_all("h1")[1].get_text()
             for td in soup_new.find_all("td"):
                 if td.get_text().startswith("Код") \
                         and not td.get('class') == ['specHelmImg']:
                     id = str(list(td.children)[0]).split(" ")[-1]
                     break
-            spec_id_dict[name] = [id]
             id_spec_dict[id] = name
 
     with open('id_speciality.json', 'w', encoding="utf-8") as fp:
         json.dump(id_spec_dict, fp, ensure_ascii=False, indent=4, separators=(',', ': '))
-    with open('speciality_id.json', 'w', encoding="utf-8") as fp:
-        json.dump(spec_id_dict, fp, ensure_ascii=False, indent=4, separators=(',', ': '))
 
 
 def retrieve_exam_threshold(id_spec_dict):
@@ -62,14 +56,13 @@ def retrieve_exam_threshold(id_spec_dict):
     url = url.replace('"', '')
 
     r = requests.get(url)
-    text = r.text
+    soup = BeautifulSoup(r.text, 'html.parser')
 
     universities = dict()
     list_universities = []
     list_grades = []
     list_ids = []
     count_subjects = []
-    soup = BeautifulSoup(text, 'html.parser')
 
     for td in soup.find_all('td'):
         if td.get('class') == ['light_gray_blue']:  # university name
@@ -106,55 +99,44 @@ def retrieve_exam_threshold(id_spec_dict):
                 f.write(result)
 
 
-def retrieve_spec_info(spec_id_dict):
+def retrieve_spec_info():
     """
     retrieve description and perspectives of specializations
-    :param spec_id_dict: dictionary, name_of_specialization:id_of_specialization
     :return: nothing, 'specialities.csv' is created with following structure:
-    "Specialization, Description, Perspectives"
+    "ID, Specialization, Description, Perspectives"
     """
-    new_url = 'https://www.ucheba.ru/for-abiturients/speciality'
-    r = requests.get(new_url)
-    text = r.text
-    soup = BeautifulSoup(text, 'html.parser')
-
-    # going through all specializations on the webpage
-    for div in soup.find_all("div"):
-        if div.get('class') == ['col-sm-4', 'fs-large', 'mb-15']:
-            speciality_id = str(div.find('a').get('href')).split('/')[-1]
-            speciality_name = div.get_text().replace("\n", "")
-
-            url_speciality = new_url + "/" + str(speciality_id)
-            r = requests.get(url_speciality)
-            text = r.text
-            soup_speciality = BeautifulSoup(text, 'html.parser')
-
-            for div_spec in soup_speciality.find_all("div"):
-                if div_spec.get('class') == ['mb-section']:
-                    for h2 in div_spec.find_all('h2'):
-                        if h2.get_text() == 'Кем работать':
-                            spec_descr = div_spec.get_text().replace("\n", ""). \
-                                replace("Кем работать", "").replace("\t", "")
-                        if h2.get_text() == 'Перспективы':
-                            spec_perspecs = div_spec.get_text().replace("\n", ""). \
-                                replace("Перспективы", "").replace("\t", "")
-            try:
-                spec_id_dict[speciality_name].append(spec_descr)
-                spec_id_dict[speciality_name].append(spec_perspecs)
-            except KeyError:
-                continue
+    base_url = 'http://vuz.edunetwork.ru/specs/'
+    r = requests.get(base_url)
+    soup = BeautifulSoup(r.text, 'html.parser')
 
     with open('specialities.csv', 'w', encoding='utf-8') as f:
-        f.write("Specialization, Description, Perspectives")
-        for key in spec_id_dict.keys():
-            try:
-                f.write('"%s",%s,"%s","%s"\n' % (key, spec_id_dict[key][0],
-                                                 spec_id_dict[key][1], spec_id_dict[key][2]))
-            except IndexError:
-                f.write('"%s",%s,,\n' % (key, spec_id_dict[key][0]))
+        # header for the csv
+        f.write("ID, Specialization, Description, Perspectives\n")
 
+        # going through all specializations
+        for spec in soup.find("section").find("div").find_all("li"):
+            spec_id = spec.find("span")
+            # if the found tag that doesn't contain link to the specialization,
+            # we just skip it
+            if spec_id is None:
+                continue
+            else:
+                spec_id = spec_id.get_text()
 
+            spec_link = spec.find('a') # link to the specialization
+            spec_url = base_url + spec_link.get('href').split("/")[-1]
+            spec_name = spec_link.get_text()
+
+            r = requests.get(spec_url)
+            soup = BeautifulSoup(r.text, 'html.parser')
+
+            spec_info = soup.find("section").find("article").find_all("p")
+            description = spec_info[0].get_text().replace("\n", "").replace("\r", "")
+            perspectives = spec_info[1].get_text().replace("\n", "").replace("\r", "")
+
+            f.write('"%s","%s","%s","%s"\n' % (spec_id, spec_name, description, perspectives))
+
+retrieve_spec_info()
 js = open('id_speciality.json', encoding='utf-8').read()
 id_spec_dict = json.loads(js)
-js = open('speciality_id.json', encoding='utf-8').read()
-spec_id_dict = json.loads(js)
+retrieve_exam_threshold(id_spec_dict)
