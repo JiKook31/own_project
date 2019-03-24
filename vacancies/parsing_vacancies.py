@@ -90,7 +90,7 @@ def parse_vacancy(vac_id, file):
     description = re.sub(cleanr, '', description)
 
     specs_list = []
-    with open("specialities.csv", encoding='utf-8') as specs_csv:
+    with open("../specializations/specialities.csv", encoding='utf-8') as specs_csv:
         csv_reader = csv.reader(specs_csv, delimiter=',')
         line_count = 0
         for row in csv_reader:
