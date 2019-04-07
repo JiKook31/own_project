@@ -6,6 +6,7 @@ import csv
 import spacy
 
 base_url = 'https://api.hh.ru/vacancies'
+specs_list = []
 
 
 def parse_all_vacancies(start_time, end_time, to_continue=False):
@@ -25,18 +26,21 @@ def parse_all_vacancies(start_time, end_time, to_continue=False):
     params = {}
     write_mode = "w"
 
+    with open("../specializations/specialities.csv", encoding='utf-8') as specs_csv:
+        csv_reader = csv.reader(specs_csv, delimiter=',')
+        for row in list(csv_reader)[1:]:
+            specs_list.append((row[1], row[2]))
+
     if to_continue:
         write_mode = "a"
-        with open('vacancies.csv', encoding='utf-8') as csv_file:
+        with open('vacancies/vacancies.csv', encoding='utf-8') as csv_file:
             csv_reader = csv.reader(csv_file, delimiter=',')
-            line_count = 0
-            for row in csv_reader:
-                if line_count != 0:
-                    list_id.add(row[0])
-                line_count += 1
+            for row in list(csv_reader)[1:]:
+                list_id.add(row[0])
 
-    with open('vacancies.csv', write_mode, encoding='utf-8') as f:
-        f.write("ID, Name, City, Avg salary, Decription, Specalizations\n")
+    with open('vacancies/vacancies.csv', write_mode, encoding='utf-8') as f:
+        if write_mode == 'w':
+            f.write("ID, Name, City, Avg salary, Decription, Specalizations\n")
 
         while to_date <= end_date:
             url = base_url + f'?date_from=%s&date_to=%s' \
@@ -84,27 +88,18 @@ def parse_vacancy(vac_id, file):
     if salary_from == 0 or salary_to == 0:
         salary_avg = salary_from if salary_to == 0 else salary_to
     else:
-        salary_avg = abs(salary_to - salary_from) / 2
+        salary_avg = salary_from + abs(salary_to - salary_from) / 2
     description = vacancy['description']
     cleanr = re.compile('<.*?>')
     description = re.sub(cleanr, '', description)
 
-    specs_list = []
-    with open("../specializations/specialities.csv", encoding='utf-8') as specs_csv:
-        csv_reader = csv.reader(specs_csv, delimiter=',')
-        line_count = 0
-        for row in csv_reader:
-            if line_count != 0:
-                specs_list.append((row[0], row[2]))
-            line_count += 1
-
-    best_specs = map_vacancy_spec(description, specs_list)
+    best_specs = map_vacancy_spec(description)
 
     file.write('"%s","%s","%s",%i,"%s","%s"\n' %
                (vac_id, vacancy['name'].replace('"', ""),
-             vacancy['area']['name'], salary_avg,
-             description.replace('"', "") if description is not None else "",
-             str(best_specs)))
+                vacancy['area']['name'], salary_avg,
+                description.replace('"', "") if description is not None else "",
+                best_specs))
 
 
 def converting_salary(salary):
@@ -120,7 +115,7 @@ def converting_salary(salary):
     return salary
 
 
-def map_vacancy_spec(vacancy_desc, specs_list):
+def map_vacancy_spec(vacancy_desc):
     """
     for vacancy description gives 3 the most similar specialization descriptions
     :param vacancy_desc: description of the vacancy that has to be mapped with specializations
@@ -134,12 +129,19 @@ def map_vacancy_spec(vacancy_desc, specs_list):
     vacancy_desc = nlp(vacancy_desc)
     for spec in specs_list:
         vac_spec_sim = vacancy_desc.similarity(nlp(spec[1]))
-        similarity_measures.append((spec[0], vac_spec_sim))
+        similarity_measures.append((vac_spec_sim, spec[0]))
 
-    return sorted(similarity_measures)[3:]
+    result = []
+    i = 1
+    for similar in sorted(similarity_measures, reverse=True):
+        if i < 4:
+            result.append(similar[1])
+        i += 1
+    return result
+
 
 # from gensim.models import KeyedVectors
-# model = KeyedVectors.load_word2vec_format('C:/Users/Aline/Downloads/model.bin', binary=True)
+# model = KeyedVectors.load_word2vec_format('model.bin', binary=True)
 # model.wv.save_word2vec_format('vec_model.txt')
 
-# parse_all_vacancies("2019-01-01", "2019-03-24", True)
+# parse_all_vacancies("2019-01-01", "2019-03-30", to_continue=True)
